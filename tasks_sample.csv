@@ -1,0 +1,4 @@
+id,title,description,sort_order,target_type
+task03,支部向けタスクC,支部向けタスクCの説明です,3,branch
+task04,支部向けタスクD,支部向けタスクDの説明です,4,branch
+rc_task03,地協向けタスクZ,地協向けタスクZの説明です,3,regional_council

@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/union-task-app/static/css/main.29ffa6b0.css",
+    "main.js": "/union-task-app/static/js/main.42cffcc2.js",
+    "static/js/453.aec767f8.chunk.js": "/union-task-app/static/js/453.aec767f8.chunk.js",
+    "index.html": "/union-task-app/index.html",
+    "main.29ffa6b0.css.map": "/union-task-app/static/css/main.29ffa6b0.css.map",
+    "main.42cffcc2.js.map": "/union-task-app/static/js/main.42cffcc2.js.map",
+    "453.aec767f8.chunk.js.map": "/union-task-app/static/js/453.aec767f8.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.29ffa6b0.css",
+    "static/js/main.42cffcc2.js"
+  ]
+}

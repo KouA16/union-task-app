@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Container, Row, Col, Card, Button, Form } from 'react-bootstrap';
+import { Container, Row, Col, Card, Button, Form, Alert } from 'react-bootstrap';
 import { Role, Branch, RegionalCouncil } from './types';
 
 interface LoginProps {
@@ -9,9 +9,22 @@ interface LoginProps {
   regionalCouncils: RegionalCouncil[];
 }
 
+const HEADQUARTERS_PASSWORD = 'jaed-union';
+
 export const Login: React.FC<LoginProps> = ({ onLogin, branches, regionalCouncils }) => {
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [selectedRegionalCouncil, setSelectedRegionalCouncil] = useState<string>('');
+  const [headquartersPassword, setHeadquartersPassword] = useState<string>('');
+  const [error, setError] = useState<string>('');
+
+  const handleHeadquartersLogin = () => {
+    if (headquartersPassword === HEADQUARTERS_PASSWORD) {
+      setError('');
+      onLogin('本部');
+    } else {
+      setError('パスワードが違います。');
+    }
+  };
 
   return (
     <Container fluid className="vh-100 d-flex justify-content-center align-items-center bg-light">
@@ -22,9 +35,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin, branches, regionalCouncil
             <Card.Body>
               <Card.Title>役割を選択してください</Card.Title>
               <div className="d-grid gap-3 mt-4">
-                <Button variant="primary" size="lg" onClick={() => onLogin('本部')}>
+                <Form.Group className="mb-3">
+                  <Form.Label>本部パスワード</Form.Label>
+                  <Form.Control
+                    type="password"
+                    value={headquartersPassword}
+                    onChange={(e) => setHeadquartersPassword(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleHeadquartersLogin()}
+                  />
+                </Form.Group>
+                <Button variant="primary" size="lg" onClick={handleHeadquartersLogin}>
                   本部としてログイン
                 </Button>
+                {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
                 <hr />
                 <Form.Select 
                   aria-label="Branch select"

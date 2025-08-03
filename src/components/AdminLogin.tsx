@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert } from 'react-bootstrap';
 
-const ADMIN_PASSWORD = 'password'; // In a real app, use a more secure method
+const ADMIN_PASSWORD = 'admin'; // In a real app, use a more secure method
 
 interface AdminLoginProps {
   onAuth: (isAuthenticated: boolean) => void;

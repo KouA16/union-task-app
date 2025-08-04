@@ -10,7 +10,7 @@ import { GanttChart } from './components/GanttChart';
 import { KanbanBoard } from './components/KanbanBoard';
 import { Role, ViewMode, Task, Branch, RegionalCouncil, TaskAssignment as TaskAssignmentType, Progress, AssignmentTargetType } from './components/types';
 import { db } from './firebase';
-import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, query, where } from 'firebase/firestore';
 
 // Initial Data (will be loaded from Firestore)
 const initialBranches: Branch[] = [
@@ -71,40 +71,62 @@ function App() {
   const [regionalCouncils] = useState<RegionalCouncil[]>(initialRegionalCouncils); // Regional Councils are static
   const [assignments, setAssignments] = useState<TaskAssignmentType[]>([]);
   const [progress, setProgress] = useState<Progress[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  // Load data from Firestore on component mount
+  // Load data based on the current user's role and ID
   useEffect(() => {
     const fetchData = async () => {
-      // Fetch Branch Tasks
+      setLoading(true);
+      
+      // Always fetch tasks and assignments for the admin view
       const branchTasksCol = collection(db, 'branchTasks');
-      const branchTasksSnapshot = await getDocs(branchTasksCol);
-      const loadedBranchTasks = branchTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
-      setBranchTasks(loadedBranchTasks);
-
-      // Fetch Regional Council Tasks
       const rcTasksCol = collection(db, 'regionalCouncilTasks');
-      const rcTasksSnapshot = await getDocs(rcTasksCol);
-      const loadedRcTasks = rcTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
-      setRegionalCouncilTasks(loadedRcTasks);
-
-      // Fetch Assignments
       const assignmentsCol = collection(db, 'assignments');
-      const assignmentsSnapshot = await getDocs(assignmentsCol);
+
+      const [branchTasksSnapshot, rcTasksSnapshot, assignmentsSnapshot] = await Promise.all([
+        getDocs(branchTasksCol),
+        getDocs(rcTasksCol),
+        getDocs(assignmentsCol)
+      ]);
+
+      const loadedBranchTasks = branchTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
+      const loadedRcTasks = rcTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
       const loadedAssignments = assignmentsSnapshot.docs.map(doc => ({ ...doc.data() as TaskAssignmentType, id: doc.id }));
+      
+      setBranchTasks(loadedBranchTasks);
+      setRegionalCouncilTasks(loadedRcTasks);
       setAssignments(loadedAssignments);
 
-      // Fetch Progress
-      const progressCol = collection(db, 'progress');
-      const progressSnapshot = await getDocs(progressCol);
-      const loadedProgress = progressSnapshot.docs.map(doc => ({ ...doc.data() as Progress, id: doc.id }));
-      setProgress(loadedProgress);
+      // Fetch progress data based on role
+      let progressQuery;
+      if (role === '本部') {
+        progressQuery = collection(db, 'progress');
+      } else if (role === '支部・分会' && currentBranchId) {
+        progressQuery = query(collection(db, 'progress'), where('target_type', '==', 'branch'), where('target_id', '==', currentBranchId));
+      } else if (role === '地協' && currentRegionalCouncilId) {
+        progressQuery = query(collection(db, 'progress'), where('target_type', '==', 'regional_council'), where('target_id', '==', currentRegionalCouncilId));
+      }
+
+      if (progressQuery) {
+        const progressSnapshot = await getDocs(progressQuery);
+        const loadedProgress = progressSnapshot.docs.map(doc => ({ ...doc.data() as Progress, id: doc.id }));
+        setProgress(loadedProgress);
+      }
 
       setLoading(false);
     };
 
-    fetchData();
-  }, []);
+    if (role) { // Only fetch data if a role is selected
+        fetchData();
+    } else {
+        // Clear data on logout
+        setBranchTasks([]);
+        setRegionalCouncilTasks([]);
+        setAssignments([]);
+        setProgress([]);
+        setLoading(false);
+    }
+  }, [role, currentBranchId, currentRegionalCouncilId]);
 
   // Save data to Firestore whenever it changes
   useEffect(() => {
@@ -142,6 +164,7 @@ function App() {
 
 
   const handleLogin = (selectedRole: Role, id?: string) => {
+    setLoading(true); // Show loading indicator immediately
     setRole(selectedRole);
     if (selectedRole === '支部・分会') {
       setCurrentBranchId(id || null);
@@ -149,10 +172,14 @@ function App() {
     } else if (selectedRole === '地協') {
       setCurrentRegionalCouncilId(id || null);
       setCurrentBranchId(null);
+    } else if (selectedRole === '本部') {
+        setCurrentBranchId(null);
+        setCurrentRegionalCouncilId(null);
     }
   };
 
   const handleLogout = () => {
+    setLoading(true);
     setRole(null);
     setCurrentBranchId(null);
     setCurrentRegionalCouncilId(null);

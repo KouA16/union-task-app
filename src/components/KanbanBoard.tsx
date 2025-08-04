@@ -54,12 +54,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ role, targetId, target
     const existingProgress = progress.find(p => p.task_id === taskId && p.target_id === targetId && p.target_type === targetType);
 
     const newProgress: Progress = {
-      id: `${taskId}-${targetType}-${targetId}`, // Explicitly set ID
+      id: `${taskId}-${targetType}-${targetId}`,
       target_type: targetType,
       target_id: targetId,
       task_id: taskId,
       status: newStatus,
-      date: newStatus === 'done' ? new Date().toISOString() : undefined,
+      ...(newStatus === 'done' && { date: new Date().toISOString() }), // Only add date if status is 'done'
     };
 
     onProgressChange(newProgress);

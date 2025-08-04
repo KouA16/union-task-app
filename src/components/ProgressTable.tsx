@@ -98,13 +98,12 @@ export const ProgressTable: React.FC<ProgressTableProps> = ({ role, branchId, br
   const handleStatusChange = (target_type: AssignmentTargetType, target_id: string, task_id: string, status: ProgressStatus) => {
     const existingProgress = progress.find(p => p.target_type === target_type && p.target_id === target_id && p.task_id === task_id);
     const newProgress: Progress = {
-      ...(existingProgress || {}),
-      id: existingProgress?.id,
+      id: existingProgress?.id || `${task_id}-${target_type}-${target_id}`,
       target_type,
       target_id,
       task_id,
       status,
-      date: status === 'done' ? new Date().toISOString().split('T')[0] : undefined,
+      ...(status === 'done' && { date: new Date().toISOString().split('T')[0] }),
     };
     onProgressChange(newProgress);
   };

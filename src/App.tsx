@@ -10,7 +10,7 @@ import { GanttChart } from './components/GanttChart';
 import { KanbanBoard } from './components/KanbanBoard';
 import { Role, ViewMode, Task, Branch, RegionalCouncil, TaskAssignment as TaskAssignmentType, Progress, AssignmentTargetType } from './components/types';
 import { db } from './firebase';
-import { collection, getDocs, setDoc, doc, query, where, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, query, where, deleteDoc, getDoc } from 'firebase/firestore';
 
 // Initial Data (will be loaded from Firestore)
 const initialBranches: Branch[] = [
@@ -77,55 +77,79 @@ function App() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      
-      // Always fetch tasks and assignments for the admin view
-      const branchTasksCol = collection(db, 'branchTasks');
-      const rcTasksCol = collection(db, 'regionalCouncilTasks');
-      const assignmentsCol = collection(db, 'assignments');
 
-      const [branchTasksSnapshot, rcTasksSnapshot, assignmentsSnapshot] = await Promise.all([
-        getDocs(branchTasksCol),
-        getDocs(rcTasksCol),
-        getDocs(assignmentsCol)
-      ]);
-
-      const loadedBranchTasks = branchTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
-      const loadedRcTasks = rcTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
-      const loadedAssignments = assignmentsSnapshot.docs.map(doc => ({ ...doc.data() as TaskAssignmentType, id: doc.id }));
-      
-      setBranchTasks(loadedBranchTasks);
-      setRegionalCouncilTasks(loadedRcTasks);
-      setAssignments(loadedAssignments);
-
-      // Fetch progress data based on role
-      let progressQuery;
-      if (role === '本部') {
-        progressQuery = collection(db, 'progress');
-      } else if (role === '支部・分会' && currentBranchId) {
-        progressQuery = query(collection(db, 'progress'), where('target_type', '==', 'branch'), where('target_id', '==', currentBranchId));
-      } else if (role === '地協' && currentRegionalCouncilId) {
-        progressQuery = query(collection(db, 'progress'), where('target_type', '==', 'regional_council'), where('target_id', '==', currentRegionalCouncilId));
-      }
-
-      if (progressQuery) {
-        const progressSnapshot = await getDocs(progressQuery);
-        const loadedProgress = progressSnapshot.docs.map(doc => ({ ...doc.data() as Progress, id: doc.id }));
-        setProgress(loadedProgress);
-      }
-
-      setLoading(false);
-    };
-
-    if (role) { // Only fetch data if a role is selected
-        fetchData();
-    } else {
-        // Clear data on logout
+      // Clear all data on logout or if role is not set
+      if (!role) {
         setBranchTasks([]);
         setRegionalCouncilTasks([]);
         setAssignments([]);
         setProgress([]);
         setLoading(false);
-    }
+        return;
+      }
+
+      // For Headquarters, load all master data but not progress (will be paginated)
+      if (role === '本部') {
+        const branchTasksCol = collection(db, 'branchTasks');
+        const rcTasksCol = collection(db, 'regionalCouncilTasks');
+        const assignmentsCol = collection(db, 'assignments');
+
+        const [branchTasksSnap, rcTasksSnap, assignmentsSnap] = await Promise.all([
+          getDocs(branchTasksCol),
+          getDocs(rcTasksCol),
+          getDocs(assignmentsCol),
+        ]);
+
+        setBranchTasks(branchTasksSnap.docs.map(doc => ({ ...doc.data() as Task, id: doc.id })));
+        setRegionalCouncilTasks(rcTasksSnap.docs.map(doc => ({ ...doc.data() as Task, id: doc.id })));
+        setAssignments(assignmentsSnap.docs.map(doc => ({ ...doc.data() as TaskAssignmentType, id: doc.id })));
+        setProgress([]); // Progress will be loaded by the table itself
+
+      } else { // For Branch or Regional Council users
+        const targetType = role === '支部・分会' ? 'branch' : 'regional_council';
+        const targetId = role === '支部・分会' ? currentBranchId : currentRegionalCouncilId;
+
+        if (!targetId) {
+          setLoading(false);
+          return;
+        }
+
+        // 1. Fetch the specific assignment for the user
+        const assignmentRef = doc(db, 'assignments', `${targetType}-${targetId}`);
+        const assignmentSnap = await getDoc(assignmentRef);
+        
+        const assignedTaskIds = assignmentSnap.exists() ? (assignmentSnap.data() as TaskAssignmentType).assigned_task_ids : [];
+        setAssignments(assignmentSnap.exists() ? [{ ...assignmentSnap.data() as TaskAssignmentType, id: assignmentSnap.id }] : []);
+
+        // 2. Fetch only the assigned tasks
+        if (assignedTaskIds.length > 0) {
+          const tasksColName = targetType === 'branch' ? 'branchTasks' : 'regionalCouncilTasks';
+          const tasksQuery = query(collection(db, tasksColName), where('id', 'in', assignedTaskIds));
+          const tasksSnap = await getDocs(tasksQuery);
+          const loadedTasks = tasksSnap.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
+          
+          if (targetType === 'branch') {
+            setBranchTasks(loadedTasks);
+            setRegionalCouncilTasks([]);
+          } else {
+            setRegionalCouncilTasks(loadedTasks);
+            setBranchTasks([]);
+          }
+        } else {
+          setBranchTasks([]);
+          setRegionalCouncilTasks([]);
+        }
+
+        // 3. Fetch only the relevant progress
+        const progressQuery = query(collection(db, 'progress'), where('target_type', '==', targetType), where('target_id', '==', targetId));
+        const progressSnap = await getDocs(progressQuery);
+        setProgress(progressSnap.docs.map(doc => ({ ...doc.data() as Progress, id: doc.id })));
+      }
+
+      setLoading(false);
+    };
+
+    fetchData();
   }, [role, currentBranchId, currentRegionalCouncilId]);
 
   

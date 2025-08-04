@@ -1,7 +1,9 @@
 
-import React, { useMemo } from 'react';
-import { Card, Table, Badge, DropdownButton, Dropdown } from 'react-bootstrap';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Card, Table, Badge, DropdownButton, Dropdown, Button, Spinner } from 'react-bootstrap';
 import { Progress, Role, Task, TaskAssignment, ProgressStatus, AssignmentTargetType } from './types';
+import { db } from '../firebase';
+import { collection, query, orderBy, limit, getDocs, startAfter, endBefore, limitToLast, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 
 const statusMap: { [key in ProgressStatus]: { variant: string; text: string } } = {
   not_started: { variant: 'secondary', text: '未着手' },
@@ -19,7 +21,48 @@ interface ProgressTableProps {
   onProgressChange: (progress: Progress) => void;
 }
 
-export const ProgressTable: React.FC<ProgressTableProps> = ({ role, branchId, branchTasks, regionalCouncilTasks, assignments, progress, onProgressChange }) => {
+export const ProgressTable: React.FC<ProgressTableProps> = ({ role, branchId, branchTasks, regionalCouncilTasks, assignments, progress: initialProgress, onProgressChange }) => {
+  const [paginatedProgress, setPaginatedProgress] = useState<Progress[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [firstDoc, setFirstDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [isLastPage, setIsLastPage] = useState(false);
+
+  const progress = role === '本部' ? paginatedProgress : initialProgress;
+  const PAGE_SIZE = 20;
+
+  const fetchProgress = async (direction: 'next' | 'prev' | 'initial' = 'initial') => {
+    if (role !== '本部') return;
+    setIsLoading(true);
+
+    let progressQuery;
+    if (direction === 'next' && lastDoc) {
+      progressQuery = query(collection(db, 'progress'), orderBy('target_type'), orderBy('target_id'), startAfter(lastDoc), limit(PAGE_SIZE));
+    } else if (direction === 'prev' && firstDoc) {
+      progressQuery = query(collection(db, 'progress'), orderBy('target_type'), orderBy('target_id'), endBefore(firstDoc), limitToLast(PAGE_SIZE));
+    } else {
+      progressQuery = query(collection(db, 'progress'), orderBy('target_type'), orderBy('target_id'), limit(PAGE_SIZE));
+    }
+
+    try {
+      const snapshot = await getDocs(progressQuery);
+      const loadedProgress = snapshot.docs.map(doc => ({ ...doc.data() as Progress, id: doc.id }));
+      setPaginatedProgress(loadedProgress);
+      setFirstDoc(snapshot.docs[0] || null);
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+      setIsLastPage(snapshot.docs.length < PAGE_SIZE);
+    } catch (error) {
+      console.error("Error fetching progress data:", error);
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    if (role === '本部') {
+      fetchProgress('initial');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
 
   const filteredAssignments = useMemo(() => {
     if (role === '本部') {
@@ -111,6 +154,13 @@ export const ProgressTable: React.FC<ProgressTableProps> = ({ role, branchId, br
             })}
           </tbody>
         </Table>
+        {role === '本部' && (
+          <div className="d-flex justify-content-center align-items-center mt-3">
+            <Button onClick={() => fetchProgress('prev')} disabled={isLoading || !firstDoc} className="me-2">前へ</Button>
+            {isLoading && <Spinner animation="border" size="sm" />}
+            <Button onClick={() => fetchProgress('next')} disabled={isLoading || isLastPage}>次へ</Button>
+          </div>
+        )}
       </Card.Body>
     </Card>
   );

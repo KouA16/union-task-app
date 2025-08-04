@@ -11,15 +11,15 @@ const statusMap: { [key in ProgressStatus]: { variant: string; text: string } } 
 
 interface ProgressTableProps {
   role: Role;
-  branchId: string | null; // This will be the targetId for 'branch' type
+  branchId: string | null;
   branchTasks: Task[];
   regionalCouncilTasks: Task[];
   assignments: TaskAssignment[];
   progress: Progress[];
-  setProgress: React.Dispatch<React.SetStateAction<Progress[]>>;
+  onProgressChange: (progress: Progress) => void;
 }
 
-export const ProgressTable: React.FC<ProgressTableProps> = ({ role, branchId, branchTasks, regionalCouncilTasks, assignments, progress, setProgress }) => {
+export const ProgressTable: React.FC<ProgressTableProps> = ({ role, branchId, branchTasks, regionalCouncilTasks, assignments, progress, onProgressChange }) => {
 
   const filteredAssignments = useMemo(() => {
     if (role === '本部') {
@@ -53,17 +53,17 @@ export const ProgressTable: React.FC<ProgressTableProps> = ({ role, branchId, br
   }, [branchTasks, regionalCouncilTasks, filteredAssignments]);
 
   const handleStatusChange = (target_type: AssignmentTargetType, target_id: string, task_id: string, status: ProgressStatus) => {
-    setProgress(prev => {
-      const otherProgress = prev.filter(p => !(p.target_type === target_type && p.target_id === target_id && p.task_id === task_id));
-      const newProgress: Progress = {
-        target_type,
-        target_id,
-        task_id,
-        status,
-        date: status === 'done' ? new Date().toISOString().split('T')[0] : undefined,
-      };
-      return [...otherProgress, newProgress];
-    });
+    const existingProgress = progress.find(p => p.target_type === target_type && p.target_id === target_id && p.task_id === task_id);
+    const newProgress: Progress = {
+      ...(existingProgress || {}),
+      id: existingProgress?.id,
+      target_type,
+      target_id,
+      task_id,
+      status,
+      date: status === 'done' ? new Date().toISOString().split('T')[0] : undefined,
+    };
+    onProgressChange(newProgress);
   };
 
   return (

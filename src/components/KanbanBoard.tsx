@@ -10,7 +10,7 @@ interface KanbanBoardProps {
   targetType: AssignmentTargetType;
   tasks: Task[];
   progress: Progress[];
-  setProgress: (progress: Progress[]) => void;
+  onProgressChange: (progress: Progress) => void;
 }
 
 const statusMap: { [key in ProgressStatus]: string } = {
@@ -21,7 +21,7 @@ const statusMap: { [key in ProgressStatus]: string } = {
 
 const statusSequence: ProgressStatus[] = ['not_started', 'in_progress', 'done'];
 
-export const KanbanBoard: React.FC<KanbanBoardProps> = ({ role, targetId, targetType, tasks, progress, setProgress }) => {
+export const KanbanBoard: React.FC<KanbanBoardProps> = ({ role, targetId, targetType, tasks, progress, onProgressChange }) => {
 
   if (!tasks || tasks.length === 0) {
     return <p className="text-center">割り当てられたタスクはありません。</p>;
@@ -49,24 +49,21 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ role, targetId, target
     const taskId = draggableId;
     const newStatus = destination.droppableId as ProgressStatus;
 
-    const existingProgressIndex = progress.findIndex(p => p.task_id === taskId && p.target_id === targetId && p.target_type === targetType);
-    
-    let newProgress;
-    if (existingProgressIndex > -1) {
-      newProgress = [...progress];
-      newProgress[existingProgressIndex] = { ...newProgress[existingProgressIndex], status: newStatus, date: new Date().toISOString() };
-    } else if (targetId) {
-      newProgress = [...progress, {
-        target_type: targetType,
-        target_id: targetId,
-        task_id: taskId,
-        status: newStatus,
-        date: new Date().toISOString()
-      }];
-    } else {
-      return; // Cannot change progress if targetId is not set
-    }
-    setProgress(newProgress);
+    if (!targetId) return;
+
+    const existingProgress = progress.find(p => p.task_id === taskId && p.target_id === targetId && p.target_type === targetType);
+
+    const newProgress: Progress = {
+      ...(existingProgress || {}),
+      id: existingProgress?.id,
+      target_type: targetType,
+      target_id: targetId,
+      task_id: taskId,
+      status: newStatus,
+      date: newStatus === 'done' ? new Date().toISOString() : undefined,
+    };
+
+    onProgressChange(newProgress);
   };
 
   // 進捗バーの計算

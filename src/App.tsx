@@ -10,7 +10,7 @@ import { GanttChart } from './components/GanttChart';
 import { KanbanBoard } from './components/KanbanBoard';
 import { Role, ViewMode, Task, Branch, RegionalCouncil, TaskAssignment as TaskAssignmentType, Progress, AssignmentTargetType } from './components/types';
 import { db } from './firebase';
-import { collection, getDocs, setDoc, doc, query, where } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc, query, where, deleteDoc } from 'firebase/firestore';
 
 // Initial Data (will be loaded from Firestore)
 const initialBranches: Branch[] = [
@@ -128,39 +128,7 @@ function App() {
     }
   }, [role, currentBranchId, currentRegionalCouncilId]);
 
-  // Save data to Firestore whenever it changes
-  useEffect(() => {
-    if (loading) return;
-
-    const saveData = async () => {
-      try {
-        // Save Branch Tasks
-        for (const task of branchTasks) {
-          await setDoc(doc(db, 'branchTasks', task.id), task);
-        }
-
-        // Save Regional Council Tasks
-        for (const task of regionalCouncilTasks) {
-          await setDoc(doc(db, 'regionalCouncilTasks', task.id), task);
-        }
-
-        // Save Assignments
-        for (const assignment of assignments) {
-          await setDoc(doc(db, 'assignments', assignment.id || `${assignment.target_type}-${assignment.target_id}`), assignment);
-        }
-
-        // Save Progress
-        for (const p of progress) {
-          const docId = p.id || `${p.task_id}-${p.target_type}-${p.target_id}`;
-          await setDoc(doc(db, 'progress', docId), p);
-        }
-      } catch (error) {
-        console.error("Error saving data to Firestore:", error);
-      }
-    };
-
-    saveData();
-  }, [branchTasks, regionalCouncilTasks, assignments, progress, loading]);
+  
 
 
   const handleLogin = (selectedRole: Role, id?: string) => {
@@ -187,25 +155,74 @@ function App() {
     setShowAdminPanel(false);
   };
 
-  const handleAssignmentChange = (targetType: AssignmentTargetType, targetId: string, taskId: string, isAssigned: boolean) => {
-    setAssignments(prev => {
-      const assignmentIndex = prev.findIndex(a => a.target_type === targetType && a.target_id === targetId);
-      
+  const handleProgressChange = async (updatedProgress: Progress) => {
+    const docId = updatedProgress.id || `${updatedProgress.task_id}-${updatedProgress.target_type}-${updatedProgress.target_id}`;
+    try {
+      await setDoc(doc(db, 'progress', docId), updatedProgress, { merge: true });
+      setProgress(prev => {
+        const index = prev.findIndex(p => p.id === updatedProgress.id);
+        if (index > -1) {
+          const newProgress = [...prev];
+          newProgress[index] = updatedProgress;
+          return newProgress;
+        }
+        return [...prev, { ...updatedProgress, id: docId }];
+      });
+    } catch (error) {
+      console.error("Error updating progress:", error);
+    }
+  };
+
+  const handleAssignmentChange = async (targetType: AssignmentTargetType, targetId: string, taskId: string, isAssigned: boolean) => {
+    const assignmentRef = doc(db, 'assignments', `${targetType}-${targetId}`);
+    
+    try {
+      const newAssignments = [...assignments];
+      const assignmentIndex = newAssignments.findIndex(a => a.target_type === targetType && a.target_id === targetId);
+
       if (assignmentIndex > -1) {
-        const newAssignments = [...prev];
         const currentAssignment = newAssignments[assignmentIndex];
         const newAssignedIds = isAssigned
           ? [...currentAssignment.assigned_task_ids, taskId]
           : currentAssignment.assigned_task_ids.filter(id => id !== taskId);
         
         newAssignments[assignmentIndex] = { ...currentAssignment, assigned_task_ids: newAssignedIds };
-        return newAssignments;
+        await setDoc(assignmentRef, newAssignments[assignmentIndex]);
       } else if (isAssigned) {
-        return [...prev, { target_type: targetType, target_id: targetId, assigned_task_ids: [taskId] }];
+        const newAssignment = { target_type: targetType, target_id: targetId, assigned_task_ids: [taskId] };
+        newAssignments.push(newAssignment);
+        await setDoc(assignmentRef, newAssignment);
       }
-      
-      return prev;
-    });
+      setAssignments(newAssignments);
+    } catch (error) {
+      console.error("Error updating assignment:", error);
+    }
+  };
+
+  const handleTaskChange = async (task: Task, action: 'add' | 'update' | 'delete') => {
+    const collectionName = task.target_type === 'branch' ? 'branchTasks' : 'regionalCouncilTasks';
+    const taskRef = doc(db, collectionName, task.id);
+
+    try {
+      if (action === 'delete') {
+        await deleteDoc(taskRef);
+      } else {
+        await setDoc(taskRef, task);
+      }
+
+      const taskStateSetter = task.target_type === 'branch' ? setBranchTasks : setRegionalCouncilTasks;
+      taskStateSetter(prev => {
+        if (action === 'add') {
+          return [...prev, task];
+        } else if (action === 'update') {
+          return prev.map(t => t.id === task.id ? task : t);
+        } else { // delete
+          return prev.filter(t => t.id !== task.id);
+        }
+      });
+    } catch (error) {
+      console.error(`Error ${action}ing task:`, error);
+    }
   };
 
   const renderAdminContent = () => {
@@ -239,9 +256,8 @@ function App() {
           {adminView === 'master' && (
             <TaskMaster 
               branchTasks={branchTasks} 
-              setBranchTasks={setBranchTasks} 
               regionalCouncilTasks={regionalCouncilTasks} 
-              setRegionalCouncilTasks={setRegionalCouncilTasks} 
+              onTaskChange={handleTaskChange} 
             />
           )}
           {adminView === 'assignment' && (
@@ -331,7 +347,7 @@ function App() {
           <Card.Body>
             {role === '本部' && (
               <>
-                {viewMode === 'table' && <ProgressTable role={role} branchId={currentBranchId} branchTasks={branchTasks} regionalCouncilTasks={regionalCouncilTasks} assignments={assignments} progress={progress} setProgress={setProgress} />}
+                {viewMode === 'table' && <ProgressTable role={role} branchId={currentBranchId} branchTasks={branchTasks} regionalCouncilTasks={regionalCouncilTasks} assignments={assignments} progress={progress} onProgressChange={handleProgressChange} />}
                 {viewMode === 'gantt' && <GanttChart role={role} tasks={[...branchTasks, ...regionalCouncilTasks]} progress={progress} />}
               </>
             )}
@@ -342,7 +358,7 @@ function App() {
                 targetType={role === '支部・分会' ? 'branch' : 'regional_council'}
                 tasks={getTasksForKanban()}
                 progress={progress} 
-                setProgress={setProgress} 
+                onProgressChange={handleProgressChange} 
               />
             )}
           </Card.Body>

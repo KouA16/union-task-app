@@ -6,64 +6,47 @@ import Papa from 'papaparse';
 
 interface TaskMasterProps {
   branchTasks: Task[];
-  setBranchTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   regionalCouncilTasks: Task[];
-  setRegionalCouncilTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  onTaskChange: (task: Task, action: 'add' | 'update' | 'delete') => void;
 }
 
 export const TaskMaster: React.FC<TaskMasterProps> = ({ 
   branchTasks, 
-  setBranchTasks, 
   regionalCouncilTasks, 
-  setRegionalCouncilTasks 
+  onTaskChange 
 }) => {
   const [activeTab, setActiveTab] = useState<AssignmentTargetType>('branch');
-  const [editedTasks, setEditedTasks] = useState<Task[]>([]);
 
-  useEffect(() => {
-    if (activeTab === 'branch') {
-      setEditedTasks(JSON.parse(JSON.stringify(branchTasks)));
-    } else {
-      setEditedTasks(JSON.parse(JSON.stringify(regionalCouncilTasks)));
-    }
-  }, [activeTab, branchTasks, regionalCouncilTasks]);
+  const currentTasks = activeTab === 'branch' ? branchTasks : regionalCouncilTasks;
 
-  const handleSave = () => {
-    if (activeTab === 'branch') {
-      setBranchTasks(editedTasks);
-    } else {
-      setRegionalCouncilTasks(editedTasks);
-    }
-    alert('タスクマスタを保存しました。');
-  };
-
-  const handleTaskChange = (id: string, field: keyof Task, value: string | number) => {
-    setEditedTasks(currentTasks =>
-      currentTasks.map(task =>
-        task.id === id ? { ...task, [field]: value } : task
-      )
-    );
+  const handleTaskChange = (task: Task, field: keyof Task, value: string | number) => {
+    const updatedTask = { ...task, [field]: value };
+    onTaskChange(updatedTask, 'update');
   };
 
   const handleAddTask = () => {
-    setEditedTasks(currentTasks => {
-      const maxIdNum = currentTasks.reduce((max, task) => {
-        const num = parseInt(task.id.replace(/[^0-9]/g, ''), 10);
-        if (isNaN(num)) return max;
-        return num > max ? num : max;
-      }, 0);
-      const newIdNum = maxIdNum + 1;
-      const prefix = activeTab === 'branch' ? 'task' : 'rc_task';
-      const newId = `${prefix}${String(newIdNum).padStart(2, '0')}`;
-      return [
-        ...currentTasks,
-        { id: newId, title: '', description: '', sort_order: currentTasks.length + 1, target_type: activeTab },
-      ];
-    });
+    const maxIdNum = currentTasks.reduce((max, task) => {
+      const num = parseInt(task.id.replace(/[^0-9]/g, ''), 10);
+      if (isNaN(num)) return max;
+      return num > max ? num : max;
+    }, 0);
+    const newIdNum = maxIdNum + 1;
+    const prefix = activeTab === 'branch' ? 'task' : 'rc_task';
+    const newId = `${prefix}${String(newIdNum).padStart(2, '0')}`;
+    const newTask: Task = {
+      id: newId, 
+      title: '新しいタスク', 
+      description: '', 
+      sort_order: currentTasks.length + 1, 
+      target_type: activeTab 
+    };
+    onTaskChange(newTask, 'add');
   };
 
-  const handleDeleteTask = (id: string) => {
-    setEditedTasks(currentTasks => currentTasks.filter(task => task.id !== id));
+  const handleDeleteTask = (task: Task) => {
+    if (window.confirm(`タスク「${task.title}」を削除しますか？`)) {
+      onTaskChange(task, 'delete');
+    }
   };
 
   const handleImportCsv = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,16 +64,10 @@ export const TaskMaster: React.FC<TaskMasterProps> = ({
             target_type: activeTab,
           }));
           
-          const mergedTasks = [...editedTasks];
           importedTasks.forEach(importedTask => {
-            const existingIndex = mergedTasks.findIndex(t => t.id === importedTask.id);
-            if (existingIndex > -1) {
-              mergedTasks[existingIndex] = importedTask; 
-            } else {
-              mergedTasks.push(importedTask); 
-            }
+            const existingTask = currentTasks.find(t => t.id === importedTask.id);
+            onTaskChange(importedTask, existingTask ? 'update' : 'add');
           });
-          setEditedTasks(mergedTasks);
           alert('CSVファイルをインポートしました。');
         },
         error: (err) => {
@@ -123,7 +100,6 @@ export const TaskMaster: React.FC<TaskMasterProps> = ({
               onChange={handleImportCsv}
               style={{ display: 'none' }}
             />
-            <Button variant="success" onClick={handleSave}>保存</Button>
           </div>
         </div>
         <Table striped bordered hover responsive>
@@ -137,32 +113,32 @@ export const TaskMaster: React.FC<TaskMasterProps> = ({
             </tr>
           </thead>
           <tbody>
-            {editedTasks.map((task) => (
+            {currentTasks.map((task) => (
               <tr key={task.id}>
                 <td>{task.id}</td>
                 <td>
                   <Form.Control
                     type="text"
                     value={task.title}
-                    onChange={(e) => handleTaskChange(task.id, 'title', e.target.value)}
+                    onChange={(e) => handleTaskChange(task, 'title', e.target.value)}
                   />
                 </td>
                 <td>
                   <Form.Control
                     type="text"
                     value={task.description}
-                    onChange={(e) => handleTaskChange(task.id, 'description', e.target.value)}
+                    onChange={(e) => handleTaskChange(task, 'description', e.target.value)}
                   />
                 </td>
                 <td>
                   <Form.Control
                     type="number"
                     value={task.sort_order}
-                    onChange={(e) => handleTaskChange(task.id, 'sort_order', parseInt(e.target.value, 10) || 0)}
+                    onChange={(e) => handleTaskChange(task, 'sort_order', parseInt(e.target.value, 10) || 0)}
                   />
                 </td>
                 <td>
-                  <Button variant="danger" size="sm" onClick={() => handleDeleteTask(task.id)}>
+                  <Button variant="danger" size="sm" onClick={() => handleDeleteTask(task)}>
                     削除
                   </Button>
                 </td>

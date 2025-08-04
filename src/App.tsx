@@ -121,23 +121,19 @@ function App() {
         const assignedTaskIds = assignmentSnap.exists() ? (assignmentSnap.data() as TaskAssignmentType).assigned_task_ids : [];
         setAssignments(assignmentSnap.exists() ? [{ ...assignmentSnap.data() as TaskAssignmentType, id: assignmentSnap.id }] : []);
 
-        // 2. Fetch only the assigned tasks
-        if (assignedTaskIds.length > 0) {
-          const tasksColName = targetType === 'branch' ? 'branchTasks' : 'regionalCouncilTasks';
-          const tasksQuery = query(collection(db, tasksColName), where('id', 'in', assignedTaskIds));
-          const tasksSnap = await getDocs(tasksQuery);
-          const loadedTasks = tasksSnap.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
-          
-          if (targetType === 'branch') {
-            setBranchTasks(loadedTasks);
-            setRegionalCouncilTasks([]);
-          } else {
-            setRegionalCouncilTasks(loadedTasks);
-            setBranchTasks([]);
-          }
-        } else {
-          setBranchTasks([]);
+        // 2. Fetch ALL tasks for the relevant type, then filter by assignedTaskIds in memory
+        const tasksColName = targetType === 'branch' ? 'branchTasks' : 'regionalCouncilTasks';
+        const allTasksSnap = await getDocs(collection(db, tasksColName)); // Fetch all tasks of this type
+        const allLoadedTasks = allTasksSnap.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
+        
+        const loadedTasks = allLoadedTasks.filter(task => assignedTaskIds.includes(task.id)); // Filter in memory
+        
+        if (targetType === 'branch') {
+          setBranchTasks(loadedTasks);
           setRegionalCouncilTasks([]);
+        } else {
+          setRegionalCouncilTasks(loadedTasks);
+          setBranchTasks([]);
         }
 
         // 3. Fetch only the relevant progress
@@ -181,27 +177,41 @@ function App() {
 
   const handleProgressChange = async (updatedProgress: Progress) => {
     const docId = updatedProgress.id || `${updatedProgress.task_id}-${updatedProgress.target_type}-${updatedProgress.target_id}`;
+    const originalProgress = progress.find(p => p.id === docId); // Store original for rollback
+
+    // Optimistic UI Update
+    setProgress(prev => {
+      const index = prev.findIndex(p => p.id === docId);
+      if (index > -1) {
+        const newProgress = [...prev];
+        newProgress[index] = updatedProgress;
+        return newProgress;
+      }
+      return [...prev, { ...updatedProgress, id: docId }];
+    });
+
     try {
       await setDoc(doc(db, 'progress', docId), updatedProgress, { merge: true });
-      setProgress(prev => {
-        const index = prev.findIndex(p => p.id === updatedProgress.id);
-        if (index > -1) {
-          const newProgress = [...prev];
-          newProgress[index] = updatedProgress;
-          return newProgress;
-        }
-        return [...prev, { ...updatedProgress, id: docId }];
-      });
     } catch (error) {
       console.error("Error updating progress:", error);
+      // Rollback UI on error
+      if (originalProgress) {
+        setProgress(prev => prev.map(p => p.id === docId ? originalProgress : p));
+      } else {
+        setProgress(prev => prev.filter(p => p.id !== docId));
+      }
+      alert('進捗の更新に失敗しました。ネットワーク接続を確認してください。');
     }
   };
 
   const handleAssignmentChange = async (targetType: AssignmentTargetType, targetId: string, taskId: string, isAssigned: boolean) => {
     const assignmentRef = doc(db, 'assignments', `${targetType}-${targetId}`);
     
-    try {
-      const newAssignments = [...assignments];
+    const originalAssignments = [...assignments]; // Store original for rollback
+
+    // Optimistic UI Update
+    setAssignments(prev => {
+      const newAssignments = [...prev];
       const assignmentIndex = newAssignments.findIndex(a => a.target_type === targetType && a.target_id === targetId);
 
       if (assignmentIndex > -1) {
@@ -211,15 +221,25 @@ function App() {
           : currentAssignment.assigned_task_ids.filter(id => id !== taskId);
         
         newAssignments[assignmentIndex] = { ...currentAssignment, assigned_task_ids: newAssignedIds };
-        await setDoc(assignmentRef, newAssignments[assignmentIndex]);
       } else if (isAssigned) {
         const newAssignment = { target_type: targetType, target_id: targetId, assigned_task_ids: [taskId] };
         newAssignments.push(newAssignment);
-        await setDoc(assignmentRef, newAssignment);
       }
-      setAssignments(newAssignments);
+      return newAssignments;
+    });
+
+    try {
+      const updatedAssignment = assignments.find(a => a.target_type === targetType && a.target_id === targetId);
+      if (updatedAssignment) {
+        await setDoc(assignmentRef, updatedAssignment);
+      } else if (isAssigned) {
+        // This case handles adding a new assignment document
+        await setDoc(assignmentRef, { target_type: targetType, target_id: targetId, assigned_task_ids: [taskId] });
+      }
     } catch (error) {
       console.error("Error updating assignment:", error);
+      setAssignments(originalAssignments); // Rollback UI
+      alert('割り当ての更新に失敗しました。ネットワーク接続を確認してください。');
     }
   };
 
@@ -227,25 +247,30 @@ function App() {
     const collectionName = task.target_type === 'branch' ? 'branchTasks' : 'regionalCouncilTasks';
     const taskRef = doc(db, collectionName, task.id);
 
+    const taskStateSetter = task.target_type === 'branch' ? setBranchTasks : setRegionalCouncilTasks;
+    const originalTasks = task.target_type === 'branch' ? [...branchTasks] : [...regionalCouncilTasks]; // Store original for rollback
+
+    // Optimistic UI Update
+    taskStateSetter(prev => {
+      if (action === 'add') {
+        return [...prev, task];
+      } else if (action === 'update') {
+        return prev.map(t => t.id === task.id ? task : t);
+      } else { // delete
+        return prev.filter(t => t.id !== task.id);
+      }
+    });
+
     try {
       if (action === 'delete') {
         await deleteDoc(taskRef);
       } else {
         await setDoc(taskRef, task);
       }
-
-      const taskStateSetter = task.target_type === 'branch' ? setBranchTasks : setRegionalCouncilTasks;
-      taskStateSetter(prev => {
-        if (action === 'add') {
-          return [...prev, task];
-        } else if (action === 'update') {
-          return prev.map(t => t.id === task.id ? task : t);
-        } else { // delete
-          return prev.filter(t => t.id !== task.id);
-        }
-      });
     } catch (error) {
       console.error(`Error ${action}ing task:`, error);
+      taskStateSetter(originalTasks); // Rollback UI
+      alert(`タスクの${action === 'add' ? '追加' : action === 'update' ? '更新' : '削除'}に失敗しました。ネットワーク接続を確認してください。`);
     }
   };
 

@@ -176,7 +176,12 @@ function App() {
   };
 
   const handleProgressChange = async (updatedProgress: Progress) => {
-    const docId = updatedProgress.id || `${updatedProgress.task_id}-${updatedProgress.target_type}-${updatedProgress.target_id}`;
+    const docId = updatedProgress.id; // KanbanBoardから渡されたIDを直接使用
+    if (!docId) { // IDがない場合はエラーとして処理
+      console.error("Error: Progress ID is missing.", updatedProgress);
+      alert('進捗の更新に失敗しました。進捗IDがありません。');
+      return;
+    }
     const originalProgress = progress.find(p => p.id === docId); // Store original for rollback
 
     // Optimistic UI Update

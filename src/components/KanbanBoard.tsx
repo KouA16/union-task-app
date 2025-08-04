@@ -54,8 +54,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ role, targetId, target
     const existingProgress = progress.find(p => p.task_id === taskId && p.target_id === targetId && p.target_type === targetType);
 
     const newProgress: Progress = {
-      ...(existingProgress || {}),
-      id: existingProgress?.id,
+      id: `${taskId}-${targetType}-${targetId}`, // Explicitly set ID
       target_type: targetType,
       target_id: targetId,
       task_id: taskId,

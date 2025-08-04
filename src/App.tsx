@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Container, Navbar, Nav, Button, Row, Col, Card, Tabs, Tab } from 'react-bootstrap';
 import './App.css';
 import { Login } from './components/Login';
@@ -7,21 +7,12 @@ import { TaskMaster } from './components/TaskMaster';
 import { TaskAssignment } from './components/TaskAssignment';
 import { ProgressTable } from './components/ProgressTable';
 import { GanttChart } from './components/GanttChart';
-
-import { KanbanBoard } from './components/KanbanBoard'; // Add this line
+import { KanbanBoard } from './components/KanbanBoard';
 import { Role, ViewMode, Task, Branch, RegionalCouncil, TaskAssignment as TaskAssignmentType, Progress, AssignmentTargetType } from './components/types';
+import { db } from './firebase';
+import { collection, getDocs, setDoc, doc, query, where } from 'firebase/firestore';
 
-// Initial Data
-const initialBranchTasks: Task[] = [
-  { id: 'task01', title: '支部向けタスクA', description: '支部向けタスクAの説明', sort_order: 1, target_type: 'branch' },
-  { id: 'task02', title: '支部向けタスクB', description: '支部向けタスクBの説明', sort_order: 2, target_type: 'branch' },
-];
-
-const initialRegionalCouncilTasks: Task[] = [
-  { id: 'rc_task01', title: '地協向けタスクX', description: '地協向けタスクXの説明', sort_order: 1, target_type: 'regional_council' },
-  { id: 'rc_task02', title: '地協向けタスクY', description: '地協向けタスクYの説明', sort_order: 2, target_type: 'regional_council' },
-];
-
+// Initial Data (will be loaded from Firestore)
 const initialBranches: Branch[] = [
     { id: '01', name: '北海道', prefecture: '北海道' }, { id: '02', name: '青森', prefecture: '青森県' },
     { id: '03', name: '岩手', prefecture: '岩手県' }, { id: '04', name: '宮城', prefecture: '宮城県' },
@@ -65,12 +56,6 @@ const initialRegionalCouncils: RegionalCouncil[] = [
   { id: 'kyushu', name: '九州地協' },
 ];
 
-const initialAssignments: TaskAssignmentType[] = [
-  { target_type: 'branch', target_id: '11', assigned_task_ids: ['task01'] }, // Saitama Branch
-  { target_type: 'branch', target_id: '13', assigned_task_ids: ['task01', 'task02'] }, // Tokyo Branch
-  { target_type: 'regional_council', target_id: 'kanto', assigned_task_ids: ['rc_task01'] }, // Kanto Regional Council
-];
-
 function App() {
   const [role, setRole] = useState<Role | null>(null);
   const [currentBranchId, setCurrentBranchId] = useState<string | null>(null);
@@ -80,12 +65,86 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [adminView, setAdminView] = useState('master');
 
-  const [branchTasks, setBranchTasks] = useState<Task[]>(initialBranchTasks);
-  const [regionalCouncilTasks, setRegionalCouncilTasks] = useState<Task[]>(initialRegionalCouncilTasks);
-  const [branches] = useState<Branch[]>(initialBranches);
-  const [regionalCouncils] = useState<RegionalCouncil[]>(initialRegionalCouncils);
-  const [assignments, setAssignments] = useState<TaskAssignmentType[]>(initialAssignments);
+  const [branchTasks, setBranchTasks] = useState<Task[]>([]);
+  const [regionalCouncilTasks, setRegionalCouncilTasks] = useState<Task[]>([]);
+  const [branches] = useState<Branch[]>(initialBranches); // Branches are static
+  const [regionalCouncils] = useState<RegionalCouncil[]>(initialRegionalCouncils); // Regional Councils are static
+  const [assignments, setAssignments] = useState<TaskAssignmentType[]>([]);
   const [progress, setProgress] = useState<Progress[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load data from Firestore on component mount
+  useEffect(() => {
+    const fetchData = async () => {
+      // Fetch Branch Tasks
+      const branchTasksCol = collection(db, 'branchTasks');
+      const branchTasksSnapshot = await getDocs(branchTasksCol);
+      const loadedBranchTasks = branchTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
+      setBranchTasks(loadedBranchTasks);
+
+      // Fetch Regional Council Tasks
+      const rcTasksCol = collection(db, 'regionalCouncilTasks');
+      const rcTasksSnapshot = await getDocs(rcTasksCol);
+      const loadedRcTasks = rcTasksSnapshot.docs.map(doc => ({ ...doc.data() as Task, id: doc.id }));
+      setRegionalCouncilTasks(loadedRcTasks);
+
+      // Fetch Assignments
+      const assignmentsCol = collection(db, 'assignments');
+      const assignmentsSnapshot = await getDocs(assignmentsCol);
+      const loadedAssignments = assignmentsSnapshot.docs.map(doc => ({ ...doc.data() as TaskAssignmentType, id: doc.id }));
+      setAssignments(loadedAssignments);
+
+      // Fetch Progress
+      const progressCol = collection(db, 'progress');
+      const progressSnapshot = await getDocs(progressCol);
+      const loadedProgress = progressSnapshot.docs.map(doc => ({ ...doc.data() as Progress, id: doc.id }));
+      setProgress(loadedProgress);
+
+      setLoading(false);
+    };
+
+    fetchData();
+  }, []);
+
+  // Save data to Firestore whenever it changes
+  useEffect(() => {
+    const saveBranchTasks = async () => {
+      for (const task of branchTasks) {
+        await setDoc(doc(db, 'branchTasks', task.id), task);
+      }
+    };
+    if (!loading) saveBranchTasks();
+  }, [branchTasks, loading]);
+
+  useEffect(() => {
+    const saveRegionalCouncilTasks = async () => {
+      for (const task of regionalCouncilTasks) {
+        await setDoc(doc(db, 'regionalCouncilTasks', task.id), task);
+      }
+    };
+    if (!loading) saveRegionalCouncilTasks();
+  }, [regionalCouncilTasks, loading]);
+
+  useEffect(() => {
+    const saveAssignments = async () => {
+      for (const assignment of assignments) {
+        await setDoc(doc(db, 'assignments', assignment.id || `${assignment.target_type}-${assignment.target_id}`), assignment);
+      }
+    };
+    if (!loading) saveAssignments();
+  }, [assignments, loading]);
+
+  useEffect(() => {
+    const saveProgress = async () => {
+      for (const p of progress) {
+        // FirestoreドキュメントIDとして使用できる一意のIDを生成
+        const docId = p.id || `${p.task_id}-${p.target_type}-${p.target_id}`;
+        await setDoc(doc(db, 'progress', docId), p);
+      }
+    };
+    if (!loading) saveProgress();
+  }, [progress, loading]);
+
 
   const handleLogin = (selectedRole: Role, id?: string) => {
     setRole(selectedRole);
@@ -118,7 +177,7 @@ function App() {
         newAssignedIds = targetAssignment.assigned_task_ids.filter(id => id !== taskId);
       }
       
-      return [...otherAssignments, { target_type: targetType, target_id: targetId, assigned_task_ids: newAssignedIds }];
+      return [...otherAssignments, { ...targetAssignment, assigned_task_ids: newAssignedIds }];
     });
   };
 
@@ -184,6 +243,10 @@ function App() {
       setShowAdminPanel(true);
     }
   };
+
+  if (loading) {
+    return <div className="d-flex justify-content-center align-items-center vh-100">Loading...</div>;
+  }
 
   if (!role) {
     return <Login onLogin={handleLogin} branches={branches} regionalCouncils={regionalCouncils} />;

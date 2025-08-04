@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Navbar, Nav, Button, Row, Col, Card, Tabs, Tab } from 'react-bootstrap';
+import { Container, Navbar, Nav, Button, Card, Tabs, Tab } from 'react-bootstrap';
 import './App.css';
 import { Login } from './components/Login';
 import { AdminLogin } from './components/AdminLogin';
@@ -10,7 +10,7 @@ import { GanttChart } from './components/GanttChart';
 import { KanbanBoard } from './components/KanbanBoard';
 import { Role, ViewMode, Task, Branch, RegionalCouncil, TaskAssignment as TaskAssignmentType, Progress, AssignmentTargetType } from './components/types';
 import { db } from './firebase';
-import { collection, getDocs, setDoc, doc, query, where } from 'firebase/firestore';
+import { collection, getDocs, setDoc, doc } from 'firebase/firestore';
 
 // Initial Data (will be loaded from Firestore)
 const initialBranches: Branch[] = [
@@ -108,42 +108,37 @@ function App() {
 
   // Save data to Firestore whenever it changes
   useEffect(() => {
-    const saveBranchTasks = async () => {
-      for (const task of branchTasks) {
-        await setDoc(doc(db, 'branchTasks', task.id), task);
-      }
-    };
-    if (!loading) saveBranchTasks();
-  }, [branchTasks, loading]);
+    if (loading) return;
 
-  useEffect(() => {
-    const saveRegionalCouncilTasks = async () => {
-      for (const task of regionalCouncilTasks) {
-        await setDoc(doc(db, 'regionalCouncilTasks', task.id), task);
-      }
-    };
-    if (!loading) saveRegionalCouncilTasks();
-  }, [regionalCouncilTasks, loading]);
+    const saveData = async () => {
+      try {
+        // Save Branch Tasks
+        for (const task of branchTasks) {
+          await setDoc(doc(db, 'branchTasks', task.id), task);
+        }
 
-  useEffect(() => {
-    const saveAssignments = async () => {
-      for (const assignment of assignments) {
-        await setDoc(doc(db, 'assignments', assignment.id || `${assignment.target_type}-${assignment.target_id}`), assignment);
-      }
-    };
-    if (!loading) saveAssignments();
-  }, [assignments, loading]);
+        // Save Regional Council Tasks
+        for (const task of regionalCouncilTasks) {
+          await setDoc(doc(db, 'regionalCouncilTasks', task.id), task);
+        }
 
-  useEffect(() => {
-    const saveProgress = async () => {
-      for (const p of progress) {
-        // FirestoreドキュメントIDとして使用できる一意のIDを生成
-        const docId = p.id || `${p.task_id}-${p.target_type}-${p.target_id}`;
-        await setDoc(doc(db, 'progress', docId), p);
+        // Save Assignments
+        for (const assignment of assignments) {
+          await setDoc(doc(db, 'assignments', assignment.id || `${assignment.target_type}-${assignment.target_id}`), assignment);
+        }
+
+        // Save Progress
+        for (const p of progress) {
+          const docId = p.id || `${p.task_id}-${p.target_type}-${p.target_id}`;
+          await setDoc(doc(db, 'progress', docId), p);
+        }
+      } catch (error) {
+        console.error("Error saving data to Firestore:", error);
       }
     };
-    if (!loading) saveProgress();
-  }, [progress, loading]);
+
+    saveData();
+  }, [branchTasks, regionalCouncilTasks, assignments, progress, loading]);
 
 
   const handleLogin = (selectedRole: Role, id?: string) => {
@@ -167,17 +162,22 @@ function App() {
 
   const handleAssignmentChange = (targetType: AssignmentTargetType, targetId: string, taskId: string, isAssigned: boolean) => {
     setAssignments(prev => {
-      const otherAssignments = prev.filter(a => !(a.target_type === targetType && a.target_id === targetId));
-      const targetAssignment = prev.find(a => a.target_type === targetType && a.target_id === targetId) || { target_type: targetType, target_id: targetId, assigned_task_ids: [] };
+      const assignmentIndex = prev.findIndex(a => a.target_type === targetType && a.target_id === targetId);
       
-      let newAssignedIds;
-      if (isAssigned) {
-        newAssignedIds = [...targetAssignment.assigned_task_ids, taskId];
-      } else {
-        newAssignedIds = targetAssignment.assigned_task_ids.filter(id => id !== taskId);
+      if (assignmentIndex > -1) {
+        const newAssignments = [...prev];
+        const currentAssignment = newAssignments[assignmentIndex];
+        const newAssignedIds = isAssigned
+          ? [...currentAssignment.assigned_task_ids, taskId]
+          : currentAssignment.assigned_task_ids.filter(id => id !== taskId);
+        
+        newAssignments[assignmentIndex] = { ...currentAssignment, assigned_task_ids: newAssignedIds };
+        return newAssignments;
+      } else if (isAssigned) {
+        return [...prev, { target_type: targetType, target_id: targetId, assigned_task_ids: [taskId] }];
       }
       
-      return [...otherAssignments, { ...targetAssignment, assigned_task_ids: newAssignedIds }];
+      return prev;
     });
   };
 

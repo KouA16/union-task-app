@@ -3,7 +3,7 @@ import React from 'react';
 import { Card } from 'react-bootstrap';
 import { Bar } from 'react-chartjs-2';
 import { Chart, registerables } from 'chart.js';
-import { Role, Task, Progress, AssignmentTargetType } from './types';
+import { Role, Task, Progress } from './types';
 Chart.register(...registerables);
 
 

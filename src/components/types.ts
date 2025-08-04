@@ -21,6 +21,7 @@ export interface RegionalCouncil {
 export type AssignmentTargetType = 'branch' | 'regional_council';
 
 export interface TaskAssignment {
+  id?: string; // Add this line
   target_type: AssignmentTargetType;
   target_id: string;
   assigned_task_ids: string[];
@@ -29,6 +30,7 @@ export interface TaskAssignment {
 export type ProgressStatus = 'not_started' | 'in_progress' | 'done';
 
 export interface Progress {
+  id?: string;
   target_type: AssignmentTargetType;
   target_id: string;
   task_id: string;

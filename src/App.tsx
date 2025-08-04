@@ -221,7 +221,7 @@ function App() {
         </Container>
       </Navbar>
 
-      <Container as="main" fluid className="my-4">
+      <Container as="main" className="my-4">
         {renderAdminContent()}
 
         <Card className="mt-4">

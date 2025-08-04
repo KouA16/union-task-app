@@ -81,7 +81,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ role, targetId, target
       <DragDropContext onDragEnd={onDragEnd}>
         <Row>
           {statusSequence.map(statusKey => (
-            <Col key={statusKey}>
+            <Col key={statusKey} sm={12} md={4}>
               <Card className="h-100">
                 <Card.Header className="text-center">{statusMap[statusKey]}</Card.Header>
                 <Card.Body>

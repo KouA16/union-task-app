@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Card } from 'react-bootstrap';
+import { Card, Tabs, Tab } from 'react-bootstrap';
 import { Bar } from 'react-chartjs-2';
 import { Chart, registerables } from 'chart.js';
 import { Role, Task, Progress, TaskAssignment, Branch, RegionalCouncil } from './types';
@@ -15,48 +15,51 @@ interface GanttChartProps {
   regionalCouncils: RegionalCouncil[];
 }
 
+const ChartComponent = ({ data, options }: any) => (
+  <div style={{ height: '600px' }}>
+    <Bar data={data} options={options} />
+  </div>
+);
+
 export const GanttChart: React.FC<GanttChartProps> = ({ role, tasks, progress, assignments, branches, regionalCouncils }) => {
-  // 組織ごとの進捗率を計算
-  const calculateProgress = () => {
+
+  const calculateProgress = (targetType: 'branch' | 'regional_council') => {
+    const orgs = targetType === 'branch' ? branches : regionalCouncils;
+    const orgMap = new Map(orgs.map(o => [o.id, o.name]));
     const progressData: { [key: string]: { total: number; done: number } } = {};
 
-    // 1. 全組織の進捗データを初期化
-    [...branches, ...regionalCouncils].forEach(org => {
+    orgs.forEach(org => {
       progressData[org.id] = { total: 0, done: 0 };
     });
 
-    // 2. 割り当てられたタスク総数を計算
-    assignments.forEach(assignment => {
-      const orgId = assignment.target_id;
-      if (progressData[orgId]) {
-        progressData[orgId].total = assignment.assigned_task_ids.length;
-      }
-    });
-
-    // 3. 完了したタスク数を計算
-    progress.forEach(p => {
-      if (p.status === 'done') {
-        const orgId = p.target_id;
+    assignments
+      .filter(a => a.target_type === targetType)
+      .forEach(assignment => {
+        const orgId = assignment.target_id;
         if (progressData[orgId]) {
-          progressData[orgId].done += 1;
+          progressData[orgId].total = assignment.assigned_task_ids.length;
         }
-      }
-    });
+      });
 
-    // 4. 進捗率を計算
+    progress
+      .filter(p => p.target_type === targetType)
+      .forEach(p => {
+        if (p.status === 'done') {
+          const orgId = p.target_id;
+          if (progressData[orgId]) {
+            progressData[orgId].done += 1;
+          }
+        }
+      });
+
     const labels: string[] = [];
     const dataValues: number[] = [];
-
-    // 組織名マップを作成
-    const branchMap = new Map(branches.map(b => [b.id, b.name]));
-    const councilMap = new Map(regionalCouncils.map(rc => [rc.id, rc.name]));
 
     for (const orgId in progressData) {
       const orgProgress = progressData[orgId];
       if (orgProgress.total > 0) {
         const percentage = (orgProgress.done / orgProgress.total) * 100;
-        const orgName = branchMap.get(orgId) || councilMap.get(orgId) || orgId;
-        labels.push(orgName);
+        labels.push(orgMap.get(orgId) || orgId);
         dataValues.push(percentage);
       }
     }
@@ -64,27 +67,15 @@ export const GanttChart: React.FC<GanttChartProps> = ({ role, tasks, progress, a
     return { labels, dataValues };
   };
 
-  const { labels, dataValues } = calculateProgress();
+  const branchProgress = calculateProgress('branch');
+  const regionalCouncilProgress = calculateProgress('regional_council');
 
-  const data = {
-    labels: labels,
-    datasets: [
-      {
-        label: '進捗率 (%)',
-        data: dataValues,
-        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        borderWidth: 1,
-      },
-    ],
-  };
-
-  const options = {
+  const commonOptions = {
     indexAxis: 'y' as const,
     scales: {
       x: {
         beginAtZero: true,
-        max: 100, // 進捗率なので最大値を100に設定
+        max: 100,
         title: {
           display: true,
           text: '進捗率 (%)',
@@ -116,13 +107,39 @@ export const GanttChart: React.FC<GanttChartProps> = ({ role, tasks, progress, a
     }
   };
 
+  const branchData = {
+    labels: branchProgress.labels,
+    datasets: [{
+      label: '支部・分会 進捗率 (%)',
+      data: branchProgress.dataValues,
+      backgroundColor: 'rgba(75, 192, 192, 0.6)',
+      borderColor: 'rgba(75, 192, 192, 1)',
+      borderWidth: 1,
+    }],
+  };
+
+  const regionalCouncilData = {
+    labels: regionalCouncilProgress.labels,
+    datasets: [{
+      label: '地協 進捗率 (%)',
+      data: regionalCouncilProgress.dataValues,
+      backgroundColor: 'rgba(153, 102, 255, 0.6)',
+      borderColor: 'rgba(153, 102, 255, 1)',
+      borderWidth: 1,
+    }],
+  };
+
   return (
     <Card>
-      <Card.Header as="h3">支部・分会・地協のタスク進捗率</Card.Header>
       <Card.Body>
-        <div style={{ height: '600px' }}> {/* 高さを調整して見やすくする */}
-          <Bar data={data} options={options} />
-        </div>
+        <Tabs defaultActiveKey="regional_council" id="progress-tabs" className="mb-3">
+          <Tab eventKey="regional_council" title="地協のタスク進捗率">
+            <ChartComponent data={regionalCouncilData} options={commonOptions} />
+          </Tab>
+          <Tab eventKey="branch" title="支部・分会のタスク進捗率">
+            <ChartComponent data={branchData} options={commonOptions} />
+          </Tab>
+        </Tabs>
       </Card.Body>
     </Card>
   );

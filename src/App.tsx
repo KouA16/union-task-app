@@ -389,7 +389,7 @@ function App() {
             {role === '本部' && (
               <Nav variant="tabs" activeKey={viewMode} onSelect={(k) => setViewMode(k as ViewMode)}>
                 <Nav.Item><Nav.Link eventKey="table">進捗一覧（表形式）</Nav.Link></Nav.Item>
-                <Nav.Item><Nav.Link eventKey="gantt">進捗一覧（ガントチャート）</Nav.Link></Nav.Item>
+                <Nav.Item><Nav.Link eventKey="gantt">進捗一覧</Nav.Link></Nav.Item>
               </Nav>
             )}
             {(role === '支部・分会' || role === '地協') && (

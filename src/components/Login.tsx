@@ -50,25 +50,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin, branches, regionalCouncil
                 {error && <Alert variant="danger" className="mt-3">{error}</Alert>}
                 <hr />
                 <Form.Select 
-                  aria-label="Branch select"
-                  value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                >
-                  <option value="">支部・分会を選択してください</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </Form.Select>
-                <Button 
-                  variant="secondary" 
-                  size="lg" 
-                  onClick={() => onLogin('支部・分会', selectedBranch)}
-                  disabled={!selectedBranch}
-                >
-                  支部・分会としてログイン
-                </Button>
-                <hr />
-                <Form.Select 
                   aria-label="Regional council select"
                   value={selectedRegionalCouncil}
                   onChange={(e) => setSelectedRegionalCouncil(e.target.value)}
@@ -85,6 +66,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin, branches, regionalCouncil
                   disabled={!selectedRegionalCouncil}
                 >
                   地協としてログイン
+                </Button>
+                <hr />
+                <Form.Select 
+                  aria-label="Branch select"
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                >
+                  <option value="">支部・分会を選択してください</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </Form.Select>
+                <Button 
+                  variant="secondary" 
+                  size="lg" 
+                  onClick={() => onLogin('支部・分会', selectedBranch)}
+                  disabled={!selectedBranch}
+                >
+                  支部・分会としてログイン
                 </Button>
               </div>
             </Card.Body>

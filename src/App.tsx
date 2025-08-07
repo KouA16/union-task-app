@@ -402,7 +402,7 @@ function App() {
             {role === '本部' && (
               <>
                 {viewMode === 'table' && <ProgressTable role={role} branchId={currentBranchId} branchTasks={branchTasks} regionalCouncilTasks={regionalCouncilTasks} assignments={assignments} progress={progress} onProgressChange={handleProgressChange} />}
-                {viewMode === 'gantt' && <GanttChart role={role} tasks={[...branchTasks, ...regionalCouncilTasks]} progress={progress} />}
+                {viewMode === 'gantt' && <GanttChart role={role} tasks={[...branchTasks, ...regionalCouncilTasks]} progress={progress} assignments={assignments} branches={branches} regionalCouncils={regionalCouncils} />}
               </>
             )}
             {(role === '支部・分会' || role === '地協') && (
